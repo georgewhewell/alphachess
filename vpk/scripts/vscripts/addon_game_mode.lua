@@ -1859,6 +1859,7 @@ function DAC:InitGameMode()
 		h441 = "effect/liansai_dog2/1.vpcf",
 		h446 = "effect/wabbit/lvl3.vpcf",
 		h244 = "effect/chongya/1econ/items/kunkka/kunkka_immortal/kunkka_immortal_ghost_ship_marker.vpcf",
+		h425 = "effect/xiexiaowo_guanjundun/1.vpcf",
 		-- h245 = "effect/xiaoxiang/pnt.vpcf",
 	}
 	GameRules:GetGameModeEntity().courier_ground_effect_list = {
@@ -2855,11 +2856,49 @@ function CheckP2Status()
 		end
 	end
 end
+function CheckEndingStatus()
+	local live_count = 0
+	local last_hero = nil
+	for i,v in pairs (GameRules:GetGameModeEntity().hero) do
+		if v ~= nil and v:IsNull() ~= true and v:IsAlive() == true then
+			last_hero = v
+			live_count = live_count + 1
+			GameRules:GetGameModeEntity().last_player_steamid = v.steam_id
+			GameRules:GetGameModeEntity().last_player_hero = v
+		end
+	end
+	if PlayerResource:GetPlayerCount() > 1 then
+		if GameRules:GetGameModeEntity().p2_mode ~= true and live_count <= 1 and last_hero ~= nil then
+			prt('1P ready for end')
+			SetRankingState(last_hero)
+			Timers:CreateTimer(0.5,function()
+				DealFuneralAffairs(last_hero)
+			end)
+		end
+		if GameRules:GetGameModeEntity().p2_mode == true and GetP2TeamAliveCount() <= 1 then
+			prt('2P ready for end')
+			if last_hero ~= nil then
+				SetRankingState(last_hero)
+				Timers:CreateTimer(0.5,function()
+					DealFuneralAffairs(last_hero)
+				end)
+				if GetP2Ally(last_hero:GetTeam()) ~= nil and TeamId2Hero(GetP2Ally(last_hero:GetTeam())) ~= nil then
+					local hh = TeamId2Hero(GetP2Ally(last_hero:GetTeam()))
+					SetRankingState(hh)
+					Timers:CreateTimer(0.5,function()
+						DealFuneralAffairs(hh)
+					end)
+				end
+			end
+		end
+	end
+end
 --游戏循环1——开始一轮准备回合
 function StartAPrepareRound()
 	if GameRules:GetGameModeEntity().is_game_ended == true then
 		return
 	end
+	CheckEndingStatus()
 	CheckP2Status()
 	-- StatChess()
 	PostPlayerInfo()
@@ -2915,6 +2954,9 @@ function StartAPrepareRound()
 	GameRules:GetGameModeEntity().game_status = 1
 
 	GameRules:GetGameModeEntity().prepare_timer = 35
+	if GetMapName() == 'casual_2x4' or GetMapName() == 'ranked_2x4' then
+		GameRules:GetGameModeEntity().prepare_timer = 40
+	end
 	
 	for team_i=6,13 do
 		CustomGameEventManager:Send_ServerToTeam(team_i,"battle_info",{
@@ -4115,7 +4157,6 @@ function DAC:OnCancelPickChessPosition(keys)
 	CancelPickChess(caster)
 end
 function DAC:OnPickChessPosition(keys)
-
 	local p = Vector(keys.x,keys.y,keys.z)
 	local caster = PlayerId2Hero(keys.PlayerID)
 	local is_move = false
@@ -5177,6 +5218,9 @@ end
 
 --根据玩家存活情况结算刚刚战败的玩家hero
 function SetRankingState(hero)
+	if GameRules:GetGameModeEntity().p2_mode == true and FindValueInTable(GameRules:GetGameModeEntity().p2_death_table,hero.p2team) == false then
+		table.insert(GameRules:GetGameModeEntity().p2_death_table,hero.p2team)
+	end
 	GameRules:GetGameModeEntity().counterpart[hero:GetTeam()] = -1
 	-- prt('battle count decreased to '..GameRules:GetGameModeEntity().battle_count)
 	--hero是刚刚战败的玩家
@@ -11798,6 +11842,20 @@ function ShowCrown(hero,crown_level)
 		hero.crown_p = PlayParticleOnUnitUntilDeath({
 			caster = hero,
 			p = "effect/crown/2.vpcf",
+			pos = PATTACH_OVERHEAD_FOLLOW,
+		})
+	end
+	if crown_level == 3 then
+		hero.crown_p = PlayParticleOnUnitUntilDeath({
+			caster = hero,
+			p = "effect/crown_s2/1.vpcf",
+			pos = PATTACH_ABSORIGIN_FOLLOW,
+		})
+	end
+	if crown_level == 4 then
+		hero.crown_p = PlayParticleOnUnitUntilDeath({
+			caster = hero,
+			p = "effect/crown_s2/2.vpcf",
 			pos = PATTACH_OVERHEAD_FOLLOW,
 		})
 	end
