@@ -3957,6 +3957,9 @@ function RecallChess(keys)
 	--撤回手牌
 	local picked_chess = keys.target
 	local caster = keys.caster
+	if IsUnitExist(picked_chess) == false then
+		return
+	end
 	local team_id = picked_chess.team_id
 	local origin_x = picked_chess.x
 	local origin_y = picked_chess.y
@@ -4046,6 +4049,7 @@ end
 --多余的滚回去
 function RandomRecallChess()
 	for i=6,13 do
+		UpdatePopulation(i)
 		local teamcount = GameRules:GetGameModeEntity().population[i]
 		local teammax = GameRules:GetGameModeEntity().population_max[i]
 		if teamcount > 0 and teammax < teamcount then
@@ -4059,8 +4063,8 @@ function RandomRecallChess()
 			local recalled = 0
 			Timers:CreateTimer(function()
 				if recalled < recall_amount then
-					local smallest_chess = nil
-					local smallest_level = 3
+					local smallest_chess = GameRules:GetGameModeEntity().to_be_destory_list[1]
+					local smallest_level = 4
 					for k,v in pairs(GameRules:GetGameModeEntity().to_be_destory_list[i]) do
 						local a_level = 1
 						if string.find(v:GetUnitName(),'1') then
@@ -4901,10 +4905,14 @@ function PostOneToServer(hero,steamid,rank,mode)
 		url = url..'&mode=p2&settings='..json.encode(GameRules:GetGameModeEntity().user_setting[steamid])
 	end
 	local tt = GameRules:GetGameModeEntity().stat_info[steamid]
+	local total_team = PlayerResource:GetPlayerCount()
+	if GameRules:GetGameModeEntity().p2_mode == true then
+		total_team = math.floor(PlayerResource:GetPlayerCount()/2)
+	end
 	GameRules:GetGameModeEntity().send_info[steamid] = {
 		account_id = steamid,
 		rank = rank,
-		total = PlayerResource:GetPlayerCount(),
+		total = total_team,
 		level = tt['mmr_level'],
 		candy = 0,
 		chess = tt['chess_lineup'],
@@ -5748,11 +5756,23 @@ function CheckChess(team_id)
 	GameRules:GetGameModeEntity().population[team_id] = chess_count
 	GameRules:GetGameModeEntity().population_max[team_id] = hero_level
 	
-	if chess_count > hero_level and table.maxn(dup_table) > 0 then
-		for _,y_x in pairs(dup_table) do
-			GameRules:GetGameModeEntity().mychess[team_id][y_x] = nil
-		end
+	-- if chess_count > hero_level and table.maxn(dup_table) > 0 then
+	-- 	for _,y_x in pairs(dup_table) do
+	-- 		GameRules:GetGameModeEntity().mychess[team_id][y_x] = nil
+	-- 	end
+	-- end
+end
+function UpdatePopulation(team_id)
+	if IsUnitExist(TeamId2Hero(team_id)) == false then
+		return
 	end
+	local hero_level = TeamId2Hero(team_id):GetLevel()
+	GameRules:GetGameModeEntity().population_max[team_id] = hero_level
+	local chess_count = 0
+	for y_x,obj in pairs(GameRules:GetGameModeEntity().mychess[team_id]) do
+		chess_count = chess_count + 1
+	end
+	GameRules:GetGameModeEntity().population[team_id] = chess_count
 end
 function StartAPVPRound()
 	--分配对阵（无延时）
@@ -7106,8 +7126,8 @@ function ChessAI(u)
 				ai_delay = u:FindModifierByName('modifier_batrider_sticky_napalm'):GetStackCount()
 			end
 
-			if u:IsStunned() == true then
-				return 1
+			if u:IsStunned() == true or u.is_moving == true then
+				return 0.1
 			end
 
 
@@ -7151,9 +7171,6 @@ function ChessAI(u)
 			if fenglian_result ~= nil and fenglian_result > 0 then
 				return fenglian_result + ai_delay
 			end
-
-			
-
 			
 			--释放技能：11=新沙王，0=被动技能，1=单位目标，2=无目标，3=点目标，4=自己目标，5=近身单位目标，6=先知在地图边缘招树人，7=随机友军目标（嗜血术），8=随机周围空地目标（炸弹人），9=血量百分比最低的队友，10=等级最高的敌人（末日），11=沙王戳最远的能打到敌人的格子，12=小小投掷身边的敌人到最远的格子，13=自己为中心的点目标,14=pom特殊目标
 			local a = nil
@@ -7610,6 +7627,7 @@ function ChessAI(u)
 					local yy = u.y
 					GameRules:GetGameModeEntity().unit[u.at_team_id or u.team_id][y..'_'..x] = 1
 					u:SetForwardVector((find_ok - u:GetAbsOrigin()):Normalized())
+					u.is_moving = true
 					BlinkChessX({
 						p = find_ok,
 						caster = u,
@@ -7620,13 +7638,13 @@ function ChessAI(u)
 					u.x = x
 					GameRules:GetGameModeEntity().unit[u.at_team_id or u.team_id][yy..'_'..xx] = nil
 
-					--计算需要跳多久
-					local jump_time = (find_ok - u:GetAbsOrigin()):Length2D() / 500
-					if blink_type == 'jump' then
-						jump_time = (find_ok - u:GetAbsOrigin()):Length2D() / 1000
-					end
+					-- --计算需要跳多久
+					-- local jump_time = (find_ok - u:GetAbsOrigin()):Length2D() / 500
+					-- if blink_type == 'jump' then
+					-- 	jump_time = (find_ok - u:GetAbsOrigin()):Length2D() / 1000
+					-- end
 
-					return RandomFloat(jump_time+0.1,jump_time+0.2) + ai_delay
+					return 0.1
 				end
 				return RandomFloat(0.1,0.2) + ai_delay
 			else
@@ -11800,11 +11818,11 @@ end
 function StartMarsShieldCD(caster)
 	if caster:HasAbility("mars_bulwark") then
 		if caster:HasAbility('is_god_buff_plus_plus') then
-			caster:FindAbilityByName("mars_bulwark"):StartCooldown(1.76)
+			caster:FindAbilityByName("mars_bulwark"):StartCooldown(8*0.21)
 		elseif caster:HasAbility('is_god_buff_plus') then
-			caster:FindAbilityByName("mars_bulwark"):StartCooldown(2.88)
+			caster:FindAbilityByName("mars_bulwark"):StartCooldown(8*0.42)
 		elseif caster:HasAbility('is_god_buff') then
-			caster:FindAbilityByName("mars_bulwark"):StartCooldown(4.8)
+			caster:FindAbilityByName("mars_bulwark"):StartCooldown(8*0.7)
 		else
 			caster:FindAbilityByName("mars_bulwark"):StartCooldown(8)
 		end
@@ -12680,7 +12698,7 @@ function CombineChessPlus(units, advance_unit_name)
 	end
 
 	--重新计算人口
-	CheckChess(team_id)
+	UpdatePopulation(team_id)
 
 	--同步ui人口
 	CustomGameEventManager:Send_ServerToTeam(team_id,"population",{
