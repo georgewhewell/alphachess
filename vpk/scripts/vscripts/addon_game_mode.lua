@@ -4049,7 +4049,7 @@ end
 --多余的滚回去
 function RandomRecallChess()
 	for i=6,13 do
-		UpdatePopulation(i)
+		CheckChess(i)
 		local teamcount = GameRules:GetGameModeEntity().population[i]
 		local teammax = GameRules:GetGameModeEntity().population_max[i]
 		if teamcount > 0 and teammax < teamcount then
@@ -5743,6 +5743,9 @@ function CheckChess(team_id)
 	local index_table = {}
 	local dup_table = {}
 	local chess_count = 0
+	if TeamId2Hero(team_id) == nil then
+		return
+	end
 	local hero_level = TeamId2Hero(team_id):GetLevel()
 	for y_x,obj in pairs(GameRules:GetGameModeEntity().mychess[team_id]) do
 		if FindValueInTable(index_table,obj.index) == true then
@@ -5756,23 +5759,11 @@ function CheckChess(team_id)
 	GameRules:GetGameModeEntity().population[team_id] = chess_count
 	GameRules:GetGameModeEntity().population_max[team_id] = hero_level
 	
-	-- if chess_count > hero_level and table.maxn(dup_table) > 0 then
-	-- 	for _,y_x in pairs(dup_table) do
-	-- 		GameRules:GetGameModeEntity().mychess[team_id][y_x] = nil
-	-- 	end
-	-- end
-end
-function UpdatePopulation(team_id)
-	if IsUnitExist(TeamId2Hero(team_id)) == false then
-		return
+	if table.maxn(dup_table) > 0 then
+		for _,y_x in pairs(dup_table) do
+			GameRules:GetGameModeEntity().mychess[team_id][y_x] = nil
+		end
 	end
-	local hero_level = TeamId2Hero(team_id):GetLevel()
-	GameRules:GetGameModeEntity().population_max[team_id] = hero_level
-	local chess_count = 0
-	for y_x,obj in pairs(GameRules:GetGameModeEntity().mychess[team_id]) do
-		chess_count = chess_count + 1
-	end
-	GameRules:GetGameModeEntity().population[team_id] = chess_count
 end
 function StartAPVPRound()
 	--分配对阵（无延时）
@@ -12698,7 +12689,7 @@ function CombineChessPlus(units, advance_unit_name)
 	end
 
 	--重新计算人口
-	UpdatePopulation(team_id)
+	CheckChess(team_id)
 
 	--同步ui人口
 	CustomGameEventManager:Send_ServerToTeam(team_id,"population",{
